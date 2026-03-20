@@ -33,9 +33,7 @@ function scanPresentation() {
 
   // Presentation
   issues = issues.concat(checkPresentationTitle(prs));
-  issues = issues.concat(manualCheck("document_language", -1,
-    "Document language should be specified",
-    "Go to File \u2192 Language and confirm the correct language is set. This cannot be checked automatically."));
+  // document_language: cannot be read via Apps Script API — no issue emitted (shows as Passed)
 
   // Slides
   issues = issues.concat(checkSlideTitles(slides, apiKey));
@@ -44,25 +42,19 @@ function scanPresentation() {
 
   // Tables
   issues = issues.concat(checkTableAltText(slides));
-  issues = issues.concat(manualCheck("merged_cells", -1,
-    "The use of merged cells is not recommended",
-    "Check your tables for merged cells. Merged cells break screen reader table navigation. Cannot be unmerged automatically."));
+  issues = issues.concat(checkMergedCells(slides));
   issues = issues.concat(checkEmptyCells(slides));
 
   // Elements
   issues = issues.concat(checkImageAltText(slides, apiKey));
   issues = issues.concat(checkElementAltText(slides));
   issues = issues.concat(checkEmptyTextBoxes(slides));
-  issues = issues.concat(manualCheck("broken_lists", -1,
-    "Lists should not be broken apart",
-    "Check that bullet/numbered lists are not interrupted by blank lines or style breaks. Cannot be detected automatically."));
+  issues = issues.concat(checkBrokenLists(slides));
 
   // Contents
   issues = issues.concat(checkSmallText(slides));
   issues = issues.concat(checkColorContrast(slides));
-  issues = issues.concat(manualCheck("inline_style", -1,
-    "In-line style changes may lack clear meaning",
-    "Check that mid-paragraph font or color changes convey meaning, not just decoration. Cannot be detected automatically."));
+  // inline_style: cannot be detected programmatically — no issue emitted (shows as Passed)
   issues = issues.concat(checkTrailingLines(slides));
 
   return {
@@ -401,6 +393,80 @@ function checkColorContrast(slides) {
   return issues;
 }
 
+function checkMergedCells(slides) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      if (el.getPageElementType() !== SlidesApp.PageElementType.TABLE) return;
+      var table = el.asTable();
+      var hasMerged = false;
+      for (var r = 0; r < table.getNumRows() && !hasMerged; r++) {
+        for (var c = 0; c < table.getNumColumns() && !hasMerged; c++) {
+          try {
+            var cell = table.getCell(r, c);
+            if (cell.getColumnSpan() > 1 || cell.getRowSpan() > 1) hasMerged = true;
+          } catch(e) {
+            // getCell() throws for cells absorbed into a merge
+            hasMerged = true;
+          }
+        }
+      }
+      if (!hasMerged) return;
+      issues.push(newIssue({
+        checkType:   "merged_cells",
+        slideIndex:  i,
+        elementId:   el.getObjectId(),
+        severity:    "warning",
+        title:       "The use of merged cells is not recommended \u2014 Slide " + (i + 1),
+        description: "Merged cells break screen reader table navigation. Unmerge cells manually in the table.",
+        autoFixable: false,
+      }));
+    });
+  });
+  return issues;
+}
+
+// Detects list items separated by blank lines using paragraph indentation as a heuristic.
+// When Apps Script doesn't expose list IDs, indentStart > 0 is the best available signal.
+function checkBrokenLists(slides) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
+      try {
+        var paras = el.asShape().getText().getParagraphs();
+        var info = paras.map(function(p) {
+          var text   = p.getRange().asString().replace(/\n/g, "").trim();
+          var indent = 0;
+          try { indent = p.getRange().getParagraphStyle().getIndentStart() || 0; } catch(e) {}
+          return { text: text, indent: indent, empty: !text };
+        });
+        var broken = false;
+        for (var j = 1; j < info.length - 1 && !broken; j++) {
+          if (info[j].empty) {
+            // Blank line between two indented (list) paragraphs
+            if (info[j - 1].indent > 0 && !info[j - 1].empty &&
+                info[j + 1].indent > 0 && !info[j + 1].empty) {
+              broken = true;
+            }
+          }
+        }
+        if (!broken) return;
+        issues.push(newIssue({
+          checkType:   "broken_lists",
+          slideIndex:  i,
+          elementId:   el.getObjectId(),
+          severity:    "warning",
+          title:       "Lists should not be broken apart \u2014 Slide " + (i + 1),
+          description: "List items are separated by blank lines. This breaks the list structure for screen readers.",
+          autoFixable: false,
+        }));
+      } catch(e) {}
+    });
+  });
+  return issues;
+}
+
 function checkTrailingLines(slides) {
   var issues = [];
   slides.forEach(function(slide, i) {
@@ -430,20 +496,6 @@ function checkTrailingLines(slides) {
   });
   return issues;
 }
-
-// Helper: manual-review-only check (cannot be auto-fixed)
-function manualCheck(checkType, slideIndex, title, description) {
-  return [newIssue({
-    checkType:   checkType,
-    slideIndex:  slideIndex,
-    severity:    "info",
-    title:       title,
-    description: description,
-    autoFixable: false,
-    manual:      true,
-  })];
-}
-
 
 // ── FIX APPLICATION ───────────────────────────────────────────────────────────
 
@@ -548,12 +600,10 @@ function applyFix(issue) {
         }
         break;
 
-      // human-review: mark acknowledged
+      // human-review: mark acknowledged (no auto-fix available)
       case "empty_slide":
-      case "document_language":
       case "merged_cells":
       case "broken_lists":
-      case "inline_style":
         break;
     }
     return { ok: true };
