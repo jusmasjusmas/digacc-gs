@@ -306,17 +306,35 @@ function checkEmptyTextBoxes(slides) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
       var shape = el.asShape();
       var ph    = shape.getPlaceholderType();
-      if (ph !== SlidesApp.PlaceholderType.NONE &&
-          ph !== SlidesApp.PlaceholderType.NOT_PLACEHOLDER) return;
-      if (shape.getText().asString().trim()) return;
+
+      // Skip title placeholders — handled by the slide title check
+      if (ph === SlidesApp.PlaceholderType.TITLE ||
+          ph === SlidesApp.PlaceholderType.CENTERED_TITLE) return;
+
+      // Skip non-text decorative shapes (rectangles, circles, etc.) that are
+      // not placeholders and not explicitly a text box
+      var isTextBox    = shape.getShapeType() === SlidesApp.ShapeType.TEXT_BOX;
+      var isPlaceholder = ph !== SlidesApp.PlaceholderType.NOT_PLACEHOLDER &&
+                          ph !== SlidesApp.PlaceholderType.NONE;
+      if (!isTextBox && !isPlaceholder) return;
+
+      // Treat as empty if the string has no visible characters
+      // (covers whitespace-only, newline-only, non-breaking spaces, etc.)
+      if (shape.getText().asString().replace(/[\s\u00a0\u200b\ufeff]/g, "")) return;
+
+      // Placeholder shapes can't be deleted — only plain text boxes are auto-fixable
+      var removable = !isPlaceholder;
+
       issues.push(newIssue({
         checkType:   "empty_textbox",
         slideIndex:  i,
         elementId:   el.getObjectId(),
         severity:    "warning",
         title:       "Text boxes should not be empty \u2014 Slide " + (i + 1),
-        description: "Empty text boxes are announced as blank elements by screen readers. Remove them.",
-        autoFixable: true,
+        description: removable
+          ? "Empty text box is announced as blank by screen readers. It will be deleted."
+          : "Empty placeholder is announced as blank by screen readers. Delete or add content.",
+        autoFixable: removable,
       }));
     });
   });
@@ -529,7 +547,12 @@ function applyFix(issue) {
 
       case "empty_textbox":
         var el = getElementById(slide, issue.elementId);
-        if (el) el.remove();
+        if (el) {
+          var eph = el.asShape().getPlaceholderType();
+          var isPlaceholder = eph !== SlidesApp.PlaceholderType.NOT_PLACEHOLDER &&
+                              eph !== SlidesApp.PlaceholderType.NONE;
+          if (!isPlaceholder) el.remove();
+        }
         break;
 
       case "empty_cells":
