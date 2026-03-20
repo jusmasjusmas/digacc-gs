@@ -35,7 +35,7 @@ function scanPresentation() {
   issues = issues.concat(checkPresentationTitle(prs));
   issues = issues.concat(manualCheck("document_language", -1,
     "Document language should be specified",
-    "Verify the presentation language is set correctly in File > Language. Cannot be checked automatically."));
+    "Go to File \u2192 Language and confirm the correct language is set. This cannot be checked automatically."));
 
   // Slides
   issues = issues.concat(checkSlideTitles(slides, apiKey));
@@ -46,7 +46,7 @@ function scanPresentation() {
   issues = issues.concat(checkTableAltText(slides));
   issues = issues.concat(manualCheck("merged_cells", -1,
     "The use of merged cells is not recommended",
-    "Check your tables for merged cells. Merged cells break screen reader navigation. Cannot be detected automatically."));
+    "Check your tables for merged cells. Merged cells break screen reader table navigation. Cannot be unmerged automatically."));
   issues = issues.concat(checkEmptyCells(slides));
 
   // Elements
@@ -55,14 +55,14 @@ function scanPresentation() {
   issues = issues.concat(checkEmptyTextBoxes(slides));
   issues = issues.concat(manualCheck("broken_lists", -1,
     "Lists should not be broken apart",
-    "Check that bullet/numbered lists are not split by blank lines or formatting breaks. Cannot be detected automatically."));
+    "Check that bullet/numbered lists are not interrupted by blank lines or style breaks. Cannot be detected automatically."));
 
   // Contents
   issues = issues.concat(checkSmallText(slides));
   issues = issues.concat(checkColorContrast(slides));
   issues = issues.concat(manualCheck("inline_style", -1,
     "In-line style changes may lack clear meaning",
-    "Check that mid-paragraph font or color changes are meaningful and not purely decorative. Cannot be detected automatically."));
+    "Check that mid-paragraph font or color changes convey meaning, not just decoration. Cannot be detected automatically."));
   issues = issues.concat(checkTrailingLines(slides));
 
   return {
@@ -83,8 +83,8 @@ function checkPresentationTitle(prs) {
     checkType:      "presentation_title",
     slideIndex:     -1,
     severity:       "error",
-    title:          "Presentation has no meaningful title",
-    description:    "The file name is the presentation title. Rename the file to something descriptive.",
+    title:          "Presentation title is required",
+    description:    "The file name is used as the presentation title. Rename the file to something descriptive.",
     suggestedValue: "Accessible Presentation",
     autoFixable:    true,
   })];
@@ -103,10 +103,10 @@ function checkSlideTitles(slides, apiKey) {
         checkType:      "missing_slide_title",
         slideIndex:     i,
         severity:       "error",
-        title:          "Slide " + (i + 1) + " has no title placeholder",
-        description:    "Screen readers identify slides by their title (WCAG 2.4.6).",
+        title:          "A slide should have a title \u2014 Slide " + (i + 1),
+        description:    "No title placeholder found. Screen readers identify slides by their title (WCAG 2.4.6).",
         suggestedValue: suggested,
-        autoFixable:    suggested !== "Slide " + (i + 1),
+        autoFixable:    true,
       }));
     } else {
       var text = titleShape.getText().asString().trim();
@@ -119,10 +119,10 @@ function checkSlideTitles(slides, apiKey) {
           slideIndex:     i,
           elementId:      titleShape.getObjectId(),
           severity:       "error",
-          title:          "Slide " + (i + 1) + " has an empty title",
-          description:    "Title placeholder exists but has no text.",
+          title:          "A slide should have a title \u2014 Slide " + (i + 1),
+          description:    "Title placeholder is empty. Screen readers identify slides by their title (WCAG 2.4.6).",
           suggestedValue: suggested,
-          autoFixable:    suggested !== "Slide " + (i + 1),
+          autoFixable:    true,
         }));
       }
     }
@@ -145,7 +145,7 @@ function checkDuplicateTitles(slides) {
         slideIndex:     i,
         elementId:      ts.getObjectId(),
         severity:       "warning",
-        title:          "Slide " + (i + 1) + ": duplicate title \u201c" + text + "\u201d",
+        title:          "Slide title should be unique \u2014 \u201c" + text + "\u201d (Slide " + (i + 1) + ")",
         description:    "Duplicate titles prevent screen reader users from distinguishing slides.",
         suggestedValue: text + " (" + seen[text] + ")",
         autoFixable:    true,
@@ -175,8 +175,8 @@ function checkEmptySlides(slides) {
         checkType:   "empty_slide",
         slideIndex:  i,
         severity:    "warning",
-        title:       "Slide " + (i + 1) + " appears to be empty",
-        description: "Empty slides provide no content for screen reader users.",
+        title:       "A slide should not be empty \u2014 Slide " + (i + 1),
+        description: "Empty slides provide no content for screen reader users. Add content or delete the slide.",
         autoFixable: false,
       }));
     }
@@ -208,8 +208,8 @@ function checkTableAltText(slides) {
         slideIndex:     i,
         elementId:      el.getObjectId(),
         severity:       "error",
-        title:          "Slide " + (i + 1) + ": table missing description",
-        description:    "Tables need alt text to summarise their content (WCAG 1.1.1).",
+        title:          "Tables should be tagged and described \u2014 Slide " + (i + 1),
+        description:    "Tables need an alt text description so screen readers can summarise their content (WCAG 1.1.1).",
         suggestedValue: desc,
         autoFixable:    true,
       }));
@@ -237,8 +237,8 @@ function checkEmptyCells(slides) {
         slideIndex:     i,
         elementId:      el.getObjectId(),
         severity:       "warning",
-        title:          "Slide " + (i + 1) + ": table has " + count + " empty cell(s)",
-        description:    "Empty cells should contain text or a placeholder so screen readers can announce them.",
+        title:          "The use of empty cells is not recommended \u2014 Slide " + (i + 1) + " (" + count + " cell" + (count === 1 ? "" : "s") + ")",
+        description:    "Empty cells are announced as blank by screen readers. Fill them with \u2014 or meaningful text.",
         suggestedValue: "\u2014",
         autoFixable:    true,
       }));
@@ -273,10 +273,10 @@ function checkImageAltText(slides, apiKey) {
         slideIndex:     i,
         elementId:      el.getObjectId(),
         severity:       "error",
-        title:          "Slide " + (i + 1) + ": image missing alt text",
-        description:    "Images need alternative text for screen readers (WCAG 1.1.1).",
+        title:          "Images should have alternative text \u2014 Slide " + (i + 1),
+        description:    "Images need alt text so screen readers can describe them to users (WCAG 1.1.1).",
         suggestedValue: suggested,
-        autoFixable:    !!apiKey,
+        autoFixable:    true,
       }));
     });
   });
@@ -297,8 +297,8 @@ function checkElementAltText(slides) {
         slideIndex:     i,
         elementId:      el.getObjectId(),
         severity:       "error",
-        title:          "Slide " + (i + 1) + ": " + label.toLowerCase() + " missing alt text",
-        description:    label + "s need alternative text for screen readers (WCAG 1.1.1).",
+        title:          "Elements should have alternative text \u2014 " + label + " on Slide " + (i + 1),
+        description:    label + "s need alt text so screen readers can describe them to users (WCAG 1.1.1).",
         suggestedValue: label + " on slide " + (i + 1),
         autoFixable:    true,
       }));
@@ -322,8 +322,8 @@ function checkEmptyTextBoxes(slides) {
         slideIndex:  i,
         elementId:   el.getObjectId(),
         severity:    "warning",
-        title:       "Slide " + (i + 1) + ": empty text box",
-        description: "Empty text boxes are announced as blank elements by screen readers.",
+        title:       "Text boxes should not be empty \u2014 Slide " + (i + 1),
+        description: "Empty text boxes are announced as blank elements by screen readers. Remove them.",
         autoFixable: true,
       }));
     });
@@ -331,40 +331,47 @@ function checkEmptyTextBoxes(slides) {
   return issues;
 }
 
+// One issue per shape (not per run) — fix applies to all small runs in that shape
 function checkSmallText(slides) {
   var issues = [];
   slides.forEach(function(slide, i) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
+      var smallest = null;
       try {
         el.asShape().getText().getParagraphs().forEach(function(para) {
           para.getRange().getTextRuns().forEach(function(run) {
             if (!run.asString().trim()) return;
             var size = run.getTextStyle().getFontSize();
             if (size && size > 0 && size < FINE_PRINT_PT) {
-              issues.push(newIssue({
-                checkType:   "small_text",
-                slideIndex:  i,
-                elementId:   el.getObjectId(),
-                severity:    "warning",
-                title:       "Slide " + (i + 1) + ": " + Math.round(size) + "pt text",
-                description: "Text is " + Math.round(size) + "pt \u2014 increase to \u2265" + FINE_PRINT_PT + "pt unless intentional.",
-                autoFixable: false,
-              }));
+              if (smallest === null || size < smallest) smallest = size;
             }
           });
         });
       } catch(e) {}
+      if (smallest === null) return;
+      issues.push(newIssue({
+        checkType:      "small_text",
+        slideIndex:     i,
+        elementId:      el.getObjectId(),
+        severity:       "warning",
+        title:          "Fine print should be avoided \u2014 " + Math.round(smallest) + "pt text on Slide " + (i + 1),
+        description:    "Text below " + FINE_PRINT_PT + "pt is difficult to read. Increase to at least " + FINE_PRINT_PT + "pt.",
+        suggestedValue: FINE_PRINT_PT + "pt",
+        autoFixable:    true,
+      }));
     });
   });
   return issues;
 }
 
+// One issue per shape (not per run) — fix applies to all light-colored runs in that shape
 function checkColorContrast(slides) {
   var issues = [];
   slides.forEach(function(slide, i) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
+      var lightHex = null;
       try {
         el.asShape().getText().getParagraphs().forEach(function(para) {
           para.getRange().getTextRuns().forEach(function(run) {
@@ -373,19 +380,22 @@ function checkColorContrast(slides) {
             if (!color || color.getColorType() !== SlidesApp.ColorType.RGB) return;
             var rgb = color.asRgbColor();
             if (isTooLight(rgb.getRed(), rgb.getGreen(), rgb.getBlue())) {
-              issues.push(newIssue({
-                checkType:   "low_contrast",
-                slideIndex:  i,
-                elementId:   el.getObjectId(),
-                severity:    "error",
-                title:       "Slide " + (i + 1) + ": low-contrast text (#" + toHex(rgb) + ")",
-                description: "This text color may fail the WCAG AA contrast ratio of 4.5:1.",
-                autoFixable: false,
-              }));
+              if (!lightHex) lightHex = toHex(rgb);
             }
           });
         });
       } catch(e) {}
+      if (!lightHex) return;
+      issues.push(newIssue({
+        checkType:      "low_contrast",
+        slideIndex:     i,
+        elementId:      el.getObjectId(),
+        severity:       "error",
+        title:          "High color contrast should be used \u2014 light text (#" + lightHex + ") on Slide " + (i + 1),
+        description:    "This text color may fail the WCAG AA contrast ratio of 4.5:1 against a light background.",
+        suggestedValue: "#1d1d1f (near black)",
+        autoFixable:    true,
+      }));
     });
   });
   return issues;
@@ -398,18 +408,21 @@ function checkTrailingLines(slides) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
       try {
         var paras = el.asShape().getText().getParagraphs();
-        if (paras.length < 2) return;
-        var last = paras[paras.length - 1].getRange().asString();
-        var prev = paras[paras.length - 2].getRange().asString();
-        if (!last.trim() && !prev.trim()) {
+        // Flag if there are 2+ trailing empty paragraphs (the mandatory terminal
+        // paragraph cannot be deleted, so we only flag when there is at least one
+        // extra empty paragraph we can actually remove)
+        if (paras.length < 3) return;
+        var last = paras[paras.length - 1].getRange().asString().replace(/\n/g, "").trim();
+        var prev = paras[paras.length - 2].getRange().asString().replace(/\n/g, "").trim();
+        if (!last && !prev) {
           issues.push(newIssue({
             checkType:   "trailing_lines",
             slideIndex:  i,
             elementId:   el.getObjectId(),
             severity:    "info",
-            title:       "Slide " + (i + 1) + ": trailing empty lines",
+            title:       "Empty trailing lines could be removed \u2014 Slide " + (i + 1),
             description: "Trailing empty paragraphs are read aloud by screen readers as blank content.",
-            autoFixable: false,
+            autoFixable: true,
           }));
         }
       } catch(e) {}
@@ -418,7 +431,7 @@ function checkTrailingLines(slides) {
   return issues;
 }
 
-// Helper: add a manual-review-only issue for checks that can't be automated
+// Helper: manual-review-only check (cannot be auto-fixed)
 function manualCheck(checkType, slideIndex, title, description) {
   return [newIssue({
     checkType:   checkType,
@@ -482,11 +495,61 @@ function applyFix(issue) {
         }
         break;
 
-      // human-review: just mark as acknowledged
       case "small_text":
+        var el = getElementById(slide, issue.elementId);
+        if (el) {
+          try {
+            el.asShape().getText().getParagraphs().forEach(function(para) {
+              para.getRange().getTextRuns().forEach(function(run) {
+                var size = run.getTextStyle().getFontSize();
+                if (size && size > 0 && size < FINE_PRINT_PT) {
+                  run.getTextStyle().setFontSize(FINE_PRINT_PT);
+                }
+              });
+            });
+          } catch(e) {}
+        }
+        break;
+
       case "low_contrast":
-      case "empty_slide":
+        var el = getElementById(slide, issue.elementId);
+        if (el) {
+          try {
+            el.asShape().getText().getParagraphs().forEach(function(para) {
+              para.getRange().getTextRuns().forEach(function(run) {
+                var color = run.getTextStyle().getForegroundColor();
+                if (!color || color.getColorType() !== SlidesApp.ColorType.RGB) return;
+                var rgb = color.asRgbColor();
+                if (isTooLight(rgb.getRed(), rgb.getGreen(), rgb.getBlue())) {
+                  run.getTextStyle().setForegroundColor("#1d1d1f");
+                }
+              });
+            });
+          } catch(e) {}
+        }
+        break;
+
       case "trailing_lines":
+        var el = getElementById(slide, issue.elementId);
+        if (el) {
+          try {
+            var textRange = el.asShape().getText();
+            var maxIter = 30;
+            for (var iter = 0; iter < maxIter; iter++) {
+              var paras = textRange.getParagraphs();
+              if (paras.length < 3) break;
+              var secondToLast = paras[paras.length - 2];
+              if (secondToLast.getRange().asString().replace(/\n/g, "").trim()) break;
+              var si = secondToLast.getRange().getStartIndex();
+              var ei = secondToLast.getRange().getEndIndex();
+              textRange.getRange(si, ei).clear();
+            }
+          } catch(e) {}
+        }
+        break;
+
+      // human-review: mark acknowledged
+      case "empty_slide":
       case "document_language":
       case "merged_cells":
       case "broken_lists":

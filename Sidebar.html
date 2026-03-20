@@ -387,42 +387,42 @@ var GROUPS = [
   {
     key: "presentation", label: "Presentation",
     checks: [
-      { type: "presentation_title", label: "Presentation title" },
-      { type: "document_language",  label: "Document language" },
+      { type: "presentation_title", label: "Presentation title is required" },
+      { type: "document_language",  label: "Document language should be specified" },
     ]
   },
   {
     key: "slides", label: "Slides",
     checks: [
-      { type: "missing_slide_title", label: "Slide titles" },
-      { type: "duplicate_title",     label: "Duplicate titles" },
-      { type: "empty_slide",         label: "Empty slides" },
+      { type: "missing_slide_title", label: "A slide should have a title" },
+      { type: "duplicate_title",     label: "Slide title should be unique" },
+      { type: "empty_slide",         label: "A slide should not be empty" },
     ]
   },
   {
     key: "tables", label: "Tables",
     checks: [
-      { type: "missing_table_alt", label: "Table descriptions" },
-      { type: "merged_cells",      label: "Merged cells" },
-      { type: "empty_cells",       label: "Empty cells" },
+      { type: "missing_table_alt", label: "Tables should be tagged and described" },
+      { type: "merged_cells",      label: "The use of merged cells is not recommended" },
+      { type: "empty_cells",       label: "The use of empty cells is not recommended" },
     ]
   },
   {
     key: "elements", label: "Elements",
     checks: [
-      { type: "missing_alt_text",  label: "Image alt text" },
-      { type: "element_alt_text",  label: "Chart / group alt text" },
-      { type: "empty_textbox",     label: "Empty text boxes" },
-      { type: "broken_lists",      label: "Broken lists" },
+      { type: "missing_alt_text",  label: "Images should have alternative text" },
+      { type: "element_alt_text",  label: "Elements should have alternative text" },
+      { type: "empty_textbox",     label: "Text boxes should not be empty" },
+      { type: "broken_lists",      label: "Lists should not be broken apart" },
     ]
   },
   {
     key: "contents", label: "Contents",
     checks: [
-      { type: "small_text",     label: "Small text" },
-      { type: "low_contrast",   label: "Low contrast text" },
-      { type: "inline_style",   label: "Inline style changes" },
-      { type: "trailing_lines", label: "Trailing empty lines" },
+      { type: "small_text",     label: "Fine print should be avoided" },
+      { type: "low_contrast",   label: "High color contrast should be used" },
+      { type: "inline_style",   label: "In-line style changes may lack clear meaning" },
+      { type: "trailing_lines", label: "Empty trailing lines could be removed" },
     ]
   },
 ];
