@@ -1,6 +1,5 @@
 // ── SLIDES ACCESSIBILITY CHECKER ──────────────────────────────────────────────
 // Google Apps Script add-on for Google Slides
-// Checks for and fixes WCAG 2.1 AA / Title II accessibility issues.
 
 var ANTHROPIC_MODEL   = "claude-sonnet-4-6";
 var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -27,28 +26,47 @@ function showSidebar() {
 // ── MAIN SCAN ─────────────────────────────────────────────────────────────────
 
 function scanPresentation() {
-  var prs     = SlidesApp.getActivePresentation();
-  var slides  = prs.getSlides();
-  var apiKey  = getApiKey();
-  var issues  = [];
+  var prs    = SlidesApp.getActivePresentation();
+  var slides = prs.getSlides();
+  var apiKey = getApiKey();
+  var issues = [];
 
+  // Presentation
   issues = issues.concat(checkPresentationTitle(prs));
+  issues = issues.concat(manualCheck("document_language", -1,
+    "Document language should be specified",
+    "Verify the presentation language is set correctly in File > Language. Cannot be checked automatically."));
+
+  // Slides
   issues = issues.concat(checkSlideTitles(slides, apiKey));
   issues = issues.concat(checkDuplicateTitles(slides));
-  issues = issues.concat(checkImageAltText(slides, apiKey));
+  issues = issues.concat(checkEmptySlides(slides));
+
+  // Tables
   issues = issues.concat(checkTableAltText(slides));
+  issues = issues.concat(manualCheck("merged_cells", -1,
+    "The use of merged cells is not recommended",
+    "Check your tables for merged cells. Merged cells break screen reader navigation. Cannot be detected automatically."));
+  issues = issues.concat(checkEmptyCells(slides));
+
+  // Elements
+  issues = issues.concat(checkImageAltText(slides, apiKey));
+  issues = issues.concat(checkElementAltText(slides));
   issues = issues.concat(checkEmptyTextBoxes(slides));
-  issues = issues.concat(checkSpeakerNotes(slides));
+  issues = issues.concat(manualCheck("broken_lists", -1,
+    "Lists should not be broken apart",
+    "Check that bullet/numbered lists are not split by blank lines or formatting breaks. Cannot be detected automatically."));
+
+  // Contents
   issues = issues.concat(checkSmallText(slides));
   issues = issues.concat(checkColorContrast(slides));
-
-  var errors   = issues.filter(function(i) { return i.severity === "error"; }).length;
-  var warnings = issues.filter(function(i) { return i.severity === "warning"; }).length;
+  issues = issues.concat(manualCheck("inline_style", -1,
+    "In-line style changes may lack clear meaning",
+    "Check that mid-paragraph font or color changes are meaningful and not purely decorative. Cannot be detected automatically."));
+  issues = issues.concat(checkTrailingLines(slides));
 
   return {
     issues:     issues,
-    errors:     errors,
-    warnings:   warnings,
     slideCount: slides.length,
     aiEnabled:  !!apiKey,
   };
@@ -60,15 +78,14 @@ function scanPresentation() {
 function checkPresentationTitle(prs) {
   var name  = prs.getName() || "";
   var clean = name.replace(/\.(pptx?|gslides)$/i, "").trim();
-  var bad   = !clean || /^untitled/i.test(clean);
-  if (!bad) return [];
+  if (clean && !/^untitled/i.test(clean)) return [];
   return [newIssue({
     checkType:      "presentation_title",
     slideIndex:     -1,
     severity:       "error",
-    title:          "Missing presentation title",
-    description:    "The file has no meaningful title. Screen readers announce the presentation title when it opens.",
-    suggestedValue: "Untitled Presentation",
+    title:          "Presentation has no meaningful title",
+    description:    "The file name is the presentation title. Rename the file to something descriptive.",
+    suggestedValue: "Accessible Presentation",
     autoFixable:    true,
   })];
 }
@@ -80,34 +97,32 @@ function checkSlideTitles(slides, apiKey) {
     var bodyText   = getBodyText(slide);
     if (!titleShape) {
       var suggested = apiKey
-        ? (callClaude("Write a short slide title (5 words max, Title Case). Return ONLY the title.\n\nContent:\n" + bodyText.slice(0, 600), null, null) || ("Slide " + (i + 1)))
+        ? (callClaude("Write a short slide title (5 words max, Title Case). Return ONLY the title.\n\nContent:\n" + bodyText.slice(0, 600)) || ("Slide " + (i + 1)))
         : ("Slide " + (i + 1));
-      var isPlaceholder = suggested === "Slide " + (i + 1);
       issues.push(newIssue({
         checkType:      "missing_slide_title",
         slideIndex:     i,
         severity:       "error",
-        title:          "Slide " + (i + 1) + ": No title placeholder",
-        description:    "Slides need a title for screen readers to identify them (WCAG 2.4.6).",
+        title:          "Slide " + (i + 1) + " has no title placeholder",
+        description:    "Screen readers identify slides by their title (WCAG 2.4.6).",
         suggestedValue: suggested,
-        autoFixable:    !isPlaceholder,
+        autoFixable:    suggested !== "Slide " + (i + 1),
       }));
     } else {
       var text = titleShape.getText().asString().trim();
       if (!text) {
         var suggested = apiKey
-          ? (callClaude("Write a short slide title (5 words max, Title Case). Return ONLY the title.\n\nContent:\n" + bodyText.slice(0, 600), null, null) || ("Slide " + (i + 1)))
+          ? (callClaude("Write a short slide title (5 words max, Title Case). Return ONLY the title.\n\nContent:\n" + bodyText.slice(0, 600)) || ("Slide " + (i + 1)))
           : ("Slide " + (i + 1));
-        var isPlaceholder = suggested === "Slide " + (i + 1);
         issues.push(newIssue({
           checkType:      "missing_slide_title",
           slideIndex:     i,
           elementId:      titleShape.getObjectId(),
           severity:       "error",
-          title:          "Slide " + (i + 1) + ": Empty slide title",
-          description:    "Title placeholder exists but contains no text.",
+          title:          "Slide " + (i + 1) + " has an empty title",
+          description:    "Title placeholder exists but has no text.",
           suggestedValue: suggested,
-          autoFixable:    !isPlaceholder,
+          autoFixable:    suggested !== "Slide " + (i + 1),
         }));
       }
     }
@@ -125,15 +140,14 @@ function checkDuplicateTitles(slides) {
     if (!text) return;
     if (seen[text] !== undefined) {
       seen[text]++;
-      var deduped = text + " (" + seen[text] + ")";
       issues.push(newIssue({
         checkType:      "duplicate_title",
         slideIndex:     i,
         elementId:      ts.getObjectId(),
         severity:       "warning",
-        title:          "Slide " + (i + 1) + ": Duplicate title \u201c" + text + "\u201d",
-        description:    "Duplicate titles prevent screen reader users from telling slides apart.",
-        suggestedValue: deduped,
+        title:          "Slide " + (i + 1) + ": duplicate title \u201c" + text + "\u201d",
+        description:    "Duplicate titles prevent screen reader users from distinguishing slides.",
+        suggestedValue: text + " (" + seen[text] + ")",
         autoFixable:    true,
       }));
     } else {
@@ -143,44 +157,29 @@ function checkDuplicateTitles(slides) {
   return issues;
 }
 
-function checkImageAltText(slides, apiKey) {
+function checkEmptySlides(slides) {
   var issues = [];
   slides.forEach(function(slide, i) {
+    var hasContent = false;
     slide.getPageElements().forEach(function(el) {
-      if (el.getPageElementType() !== SlidesApp.PageElementType.IMAGE) return;
-      var existing = (el.getTitle() || el.getDescription() || "").trim();
-      if (existing) return;
-
-      var suggested = null;
-      if (apiKey) {
-        try {
-          var blob     = el.asImage().getBlob();
-          var base64   = Utilities.base64Encode(blob.getBytes());
-          var mimeType = blob.getContentType() || "image/png";
-          suggested = callClaude(
-            "Write concise alt text (max 120 chars) for this presentation image. " +
-            "Describe what it communicates. Do NOT start with 'Image of'. Return only the alt text.",
-            base64, mimeType
-          );
-        } catch(e) { /* blob unavailable */ }
+      var t = el.getPageElementType();
+      if (t === SlidesApp.PageElementType.IMAGE    ||
+          t === SlidesApp.PageElementType.TABLE    ||
+          t === SlidesApp.PageElementType.SHEETCHART) { hasContent = true; return; }
+      if (t === SlidesApp.PageElementType.SHAPE) {
+        if (el.asShape().getText().asString().trim()) hasContent = true;
       }
-      var isPlaceholder = !suggested;
-      if (!suggested) {
-        var context = getTitleText(slide);
-        suggested = "Image on slide " + (i + 1) + (context ? " \u2014 " + context.slice(0, 40) : "");
-      }
-
-      issues.push(newIssue({
-        checkType:      "missing_alt_text",
-        slideIndex:     i,
-        elementId:      el.getObjectId(),
-        severity:       "error",
-        title:          "Slide " + (i + 1) + ": Image missing alt text",
-        description:    "Images need alternative text for screen readers (WCAG 1.1.1).",
-        suggestedValue: suggested,
-        autoFixable:    !isPlaceholder,
-      }));
     });
+    if (!hasContent) {
+      issues.push(newIssue({
+        checkType:   "empty_slide",
+        slideIndex:  i,
+        severity:    "warning",
+        title:       "Slide " + (i + 1) + " appears to be empty",
+        description: "Empty slides provide no content for screen reader users.",
+        autoFixable: false,
+      }));
+    }
   });
   return issues;
 }
@@ -190,31 +189,117 @@ function checkTableAltText(slides) {
   slides.forEach(function(slide, i) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.TABLE) return;
-      var existing = (el.getTitle() || el.getDescription() || "").trim();
-      if (existing) return;
-      var table    = el.asTable();
-      var rows     = table.getNumRows();
-      var cols     = table.getNumColumns();
-      var headers  = [];
+      if ((el.getTitle() || el.getDescription() || "").trim()) return;
+      var table   = el.asTable();
+      var rows    = table.getNumRows();
+      var cols    = table.getNumColumns();
+      var headers = [];
       try {
         for (var c = 0; c < Math.min(cols, 4); c++) {
           var txt = table.getCell(0, c).getText().asString().trim();
           if (txt) headers.push(txt);
         }
       } catch(e) {}
-      var desc = "Table with " + rows + " rows and " + cols + " columns" +
-                 (headers.length ? ": " + headers.join(", ") : "");
-      var slideTitle = getTitleText(slide);
-      if (slideTitle) desc = slideTitle + " \u2014 " + desc;
-
+      var desc  = "Table with " + rows + " rows and " + cols + " columns" + (headers.length ? ": " + headers.join(", ") : "");
+      var title = getTitleText(slide);
+      if (title) desc = title + " \u2014 " + desc;
       issues.push(newIssue({
         checkType:      "missing_table_alt",
         slideIndex:     i,
         elementId:      el.getObjectId(),
         severity:       "error",
-        title:          "Slide " + (i + 1) + ": Table missing description",
+        title:          "Slide " + (i + 1) + ": table missing description",
         description:    "Tables need alt text to summarise their content (WCAG 1.1.1).",
         suggestedValue: desc,
+        autoFixable:    true,
+      }));
+    });
+  });
+  return issues;
+}
+
+function checkEmptyCells(slides) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      if (el.getPageElementType() !== SlidesApp.PageElementType.TABLE) return;
+      var table = el.asTable();
+      var count = 0;
+      for (var r = 0; r < table.getNumRows(); r++) {
+        for (var c = 0; c < table.getNumColumns(); c++) {
+          try { if (!table.getCell(r, c).getText().asString().trim()) count++; }
+          catch(e) {}
+        }
+      }
+      if (!count) return;
+      issues.push(newIssue({
+        checkType:      "empty_cells",
+        slideIndex:     i,
+        elementId:      el.getObjectId(),
+        severity:       "warning",
+        title:          "Slide " + (i + 1) + ": table has " + count + " empty cell(s)",
+        description:    "Empty cells should contain text or a placeholder so screen readers can announce them.",
+        suggestedValue: "\u2014",
+        autoFixable:    true,
+      }));
+    });
+  });
+  return issues;
+}
+
+function checkImageAltText(slides, apiKey) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      if (el.getPageElementType() !== SlidesApp.PageElementType.IMAGE) return;
+      if ((el.getTitle() || el.getDescription() || "").trim()) return;
+      var suggested = null;
+      if (apiKey) {
+        try {
+          var blob   = el.asImage().getBlob();
+          var b64    = Utilities.base64Encode(blob.getBytes());
+          var mime   = blob.getContentType() || "image/png";
+          suggested  = callClaude(
+            "Write concise alt text (max 120 chars) for this presentation image. " +
+            "Describe what it communicates. Do NOT start with 'Image of'. Return only the alt text.",
+            b64, mime
+          );
+        } catch(e) {}
+      }
+      var ctx = getTitleText(slide);
+      if (!suggested) suggested = "Image on slide " + (i + 1) + (ctx ? " \u2014 " + ctx.slice(0, 40) : "");
+      issues.push(newIssue({
+        checkType:      "missing_alt_text",
+        slideIndex:     i,
+        elementId:      el.getObjectId(),
+        severity:       "error",
+        title:          "Slide " + (i + 1) + ": image missing alt text",
+        description:    "Images need alternative text for screen readers (WCAG 1.1.1).",
+        suggestedValue: suggested,
+        autoFixable:    !!apiKey,
+      }));
+    });
+  });
+  return issues;
+}
+
+function checkElementAltText(slides) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      var t = el.getPageElementType();
+      if (t !== SlidesApp.PageElementType.SHEETCHART &&
+          t !== SlidesApp.PageElementType.GROUP) return;
+      if ((el.getTitle() || el.getDescription() || "").trim()) return;
+      var label = t === SlidesApp.PageElementType.SHEETCHART ? "Chart" : "Group";
+      issues.push(newIssue({
+        checkType:      "element_alt_text",
+        slideIndex:     i,
+        elementId:      el.getObjectId(),
+        severity:       "error",
+        title:          "Slide " + (i + 1) + ": " + label.toLowerCase() + " missing alt text",
+        description:    label + "s need alternative text for screen readers (WCAG 1.1.1).",
+        suggestedValue: label + " on slide " + (i + 1),
         autoFixable:    true,
       }));
     });
@@ -228,44 +313,20 @@ function checkEmptyTextBoxes(slides) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
       var shape = el.asShape();
-      // Skip title / subtitle / body placeholders
-      var phType = shape.getPlaceholderType();
-      if (phType !== SlidesApp.PlaceholderType.NONE &&
-          phType !== SlidesApp.PlaceholderType.NOT_PLACEHOLDER) return;
-      var text = shape.getText().asString().trim();
-      if (text) return;
+      var ph    = shape.getPlaceholderType();
+      if (ph !== SlidesApp.PlaceholderType.NONE &&
+          ph !== SlidesApp.PlaceholderType.NOT_PLACEHOLDER) return;
+      if (shape.getText().asString().trim()) return;
       issues.push(newIssue({
-        checkType:      "empty_textbox",
-        slideIndex:     i,
-        elementId:      el.getObjectId(),
-        severity:       "warning",
-        title:          "Slide " + (i + 1) + ": Empty text box",
-        description:    "Empty text boxes are announced as blank elements by screen readers.",
-        suggestedValue: "",
-        autoFixable:    true,
+        checkType:   "empty_textbox",
+        slideIndex:  i,
+        elementId:   el.getObjectId(),
+        severity:    "warning",
+        title:       "Slide " + (i + 1) + ": empty text box",
+        description: "Empty text boxes are announced as blank elements by screen readers.",
+        autoFixable: true,
       }));
     });
-  });
-  return issues;
-}
-
-function checkSpeakerNotes(slides) {
-  var issues = [];
-  slides.forEach(function(slide, i) {
-    try {
-      var notes = slide.getNotesPage().getSpeakerNotesShape().getText().asString().trim();
-      if (!notes) {
-        issues.push(newIssue({
-          checkType:      "no_speaker_notes",
-          slideIndex:     i,
-          severity:       "warning",
-          title:          "Slide " + (i + 1) + ": No speaker notes",
-          description:    "Speaker notes provide context for screen reader users and document accessibility.",
-          suggestedValue: "",
-          autoFixable:    false,
-        }));
-      }
-    } catch(e) {}
   });
   return issues;
 }
@@ -275,23 +336,20 @@ function checkSmallText(slides) {
   slides.forEach(function(slide, i) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
-      var shape = el.asShape();
       try {
-        var textRange = shape.getText();
-        textRange.getParagraphs().forEach(function(para) {
+        el.asShape().getText().getParagraphs().forEach(function(para) {
           para.getRange().getTextRuns().forEach(function(run) {
-            var style = run.getTextStyle();
-            var size  = style.getFontSize();
+            if (!run.asString().trim()) return;
+            var size = run.getTextStyle().getFontSize();
             if (size && size > 0 && size < FINE_PRINT_PT) {
               issues.push(newIssue({
-                checkType:      "small_text",
-                slideIndex:     i,
-                elementId:      el.getObjectId(),
-                severity:       "warning",
-                title:          "Slide " + (i + 1) + ": " + Math.round(size) + "pt text in \u201c" + (el.getTitle() || shape.getPlaceholderType() || "shape") + "\u201d",
-                description:    "Text is " + Math.round(size) + "pt \u2014 increase to \u2265" + FINE_PRINT_PT + "pt unless intentional.",
-                suggestedValue: "",
-                autoFixable:    false,
+                checkType:   "small_text",
+                slideIndex:  i,
+                elementId:   el.getObjectId(),
+                severity:    "warning",
+                title:       "Slide " + (i + 1) + ": " + Math.round(size) + "pt text",
+                description: "Text is " + Math.round(size) + "pt \u2014 increase to \u2265" + FINE_PRINT_PT + "pt unless intentional.",
+                autoFixable: false,
               }));
             }
           });
@@ -308,33 +366,69 @@ function checkColorContrast(slides) {
     slide.getPageElements().forEach(function(el) {
       if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
       try {
-        var shape = el.asShape();
-        var runs  = shape.getText().getParagraphs()
-                         .reduce(function(acc, p) {
-                           return acc.concat(p.getRange().getTextRuns());
-                         }, []);
-        runs.forEach(function(run) {
-          if (!run.asString().trim()) return;
-          var color = run.getTextStyle().getForegroundColor();
-          if (!color || color.getColorType() !== SlidesApp.ColorType.RGB) return;
-          var rgb = color.asRgbColor();
-          if (isTooLight(rgb.getRed(), rgb.getGreen(), rgb.getBlue())) {
-            issues.push(newIssue({
-              checkType:      "low_contrast",
-              slideIndex:     i,
-              elementId:      el.getObjectId(),
-              severity:       "error",
-              title:          "Slide " + (i + 1) + ": Low-contrast text",
-              description:    "Text color (#" + toHex(rgb) + ") may fail WCAG AA contrast ratio (4.5:1).",
-              suggestedValue: "",
-              autoFixable:    false,
-            }));
-          }
+        el.asShape().getText().getParagraphs().forEach(function(para) {
+          para.getRange().getTextRuns().forEach(function(run) {
+            if (!run.asString().trim()) return;
+            var color = run.getTextStyle().getForegroundColor();
+            if (!color || color.getColorType() !== SlidesApp.ColorType.RGB) return;
+            var rgb = color.asRgbColor();
+            if (isTooLight(rgb.getRed(), rgb.getGreen(), rgb.getBlue())) {
+              issues.push(newIssue({
+                checkType:   "low_contrast",
+                slideIndex:  i,
+                elementId:   el.getObjectId(),
+                severity:    "error",
+                title:       "Slide " + (i + 1) + ": low-contrast text (#" + toHex(rgb) + ")",
+                description: "This text color may fail the WCAG AA contrast ratio of 4.5:1.",
+                autoFixable: false,
+              }));
+            }
+          });
         });
       } catch(e) {}
     });
   });
   return issues;
+}
+
+function checkTrailingLines(slides) {
+  var issues = [];
+  slides.forEach(function(slide, i) {
+    slide.getPageElements().forEach(function(el) {
+      if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
+      try {
+        var paras = el.asShape().getText().getParagraphs();
+        if (paras.length < 2) return;
+        var last = paras[paras.length - 1].getRange().asString();
+        var prev = paras[paras.length - 2].getRange().asString();
+        if (!last.trim() && !prev.trim()) {
+          issues.push(newIssue({
+            checkType:   "trailing_lines",
+            slideIndex:  i,
+            elementId:   el.getObjectId(),
+            severity:    "info",
+            title:       "Slide " + (i + 1) + ": trailing empty lines",
+            description: "Trailing empty paragraphs are read aloud by screen readers as blank content.",
+            autoFixable: false,
+          }));
+        }
+      } catch(e) {}
+    });
+  });
+  return issues;
+}
+
+// Helper: add a manual-review-only issue for checks that can't be automated
+function manualCheck(checkType, slideIndex, title, description) {
+  return [newIssue({
+    checkType:   checkType,
+    slideIndex:  slideIndex,
+    severity:    "info",
+    title:       title,
+    description: description,
+    autoFixable: false,
+    manual:      true,
+  })];
 }
 
 
@@ -343,7 +437,6 @@ function checkColorContrast(slides) {
 function applyFix(issue) {
   var prs   = SlidesApp.getActivePresentation();
   var slide = issue.slideIndex >= 0 ? prs.getSlides()[issue.slideIndex] : null;
-
   try {
     switch (issue.checkType) {
 
@@ -357,19 +450,16 @@ function applyFix(issue) {
         if (el) {
           el.asShape().getText().setText(issue.suggestedValue);
         } else if (slide) {
-          // No title placeholder — add one as a text box at the top
           var tb = slide.insertTextBox(issue.suggestedValue, 20, 10, 680, 50);
           tb.getText().getTextStyle().setBold(true).setFontSize(20);
         }
         break;
 
       case "missing_alt_text":
+      case "element_alt_text":
       case "missing_table_alt":
         var el = getElementById(slide, issue.elementId);
-        if (el) {
-          el.setTitle(issue.suggestedValue);
-          el.setDescription(issue.suggestedValue);
-        }
+        if (el) { el.setTitle(issue.suggestedValue); el.setDescription(issue.suggestedValue); }
         break;
 
       case "empty_textbox":
@@ -377,10 +467,30 @@ function applyFix(issue) {
         if (el) el.remove();
         break;
 
-      // human-review only — mark as acknowledged
+      case "empty_cells":
+        var el = getElementById(slide, issue.elementId);
+        if (el) {
+          var table = el.asTable();
+          for (var r = 0; r < table.getNumRows(); r++) {
+            for (var c = 0; c < table.getNumColumns(); c++) {
+              try {
+                var cell = table.getCell(r, c);
+                if (!cell.getText().asString().trim()) cell.getText().setText("\u2014");
+              } catch(e) {}
+            }
+          }
+        }
+        break;
+
+      // human-review: just mark as acknowledged
       case "small_text":
-      case "no_speaker_notes":
       case "low_contrast":
+      case "empty_slide":
+      case "trailing_lines":
+      case "document_language":
+      case "merged_cells":
+      case "broken_lists":
+      case "inline_style":
         break;
     }
     return { ok: true };
@@ -391,8 +501,7 @@ function applyFix(issue) {
 
 function remediateAll() {
   var result = scanPresentation();
-  var fixed  = 0;
-  var failed = 0;
+  var fixed = 0, failed = 0;
   result.issues.forEach(function(issue) {
     if (!issue.autoFixable) return;
     var r = applyFix(issue);
@@ -402,49 +511,56 @@ function remediateAll() {
 }
 
 
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+
+function navigateToElement(slideIndex, elementId) {
+  try {
+    var slides = SlidesApp.getActivePresentation().getSlides();
+    if (slideIndex < 0 || slideIndex >= slides.length) return;
+    var slide = slides[slideIndex];
+    if (elementId) {
+      var els = slide.getPageElements();
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].getObjectId() === elementId) { els[i].select(); return; }
+      }
+    }
+    var els = slide.getPageElements();
+    if (els.length > 0) els[0].select();
+  } catch(e) {}
+}
+
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+
+function getExportUrls() {
+  var id = SlidesApp.getActivePresentation().getId();
+  return {
+    pptx: "https://docs.google.com/presentation/d/" + id + "/export/pptx",
+    pdf:  "https://docs.google.com/presentation/d/" + id + "/export/pdf",
+  };
+}
+
+
 // ── CLAUDE API ────────────────────────────────────────────────────────────────
 
 function callClaude(prompt, imageBase64, mediaType) {
   var apiKey = getApiKey();
   if (!apiKey) return null;
-
   var content = [];
   if (imageBase64) {
-    content.push({
-      type: "image",
-      source: {
-        type:       "base64",
-        media_type: mediaType || "image/png",
-        data:       imageBase64,
-      },
-    });
+    content.push({ type: "image", source: { type: "base64", media_type: mediaType || "image/png", data: imageBase64 }});
   }
   content.push({ type: "text", text: prompt });
-
-  var payload = {
-    model:      ANTHROPIC_MODEL,
-    max_tokens: 150,
-    messages:   [{ role: "user", content: content }],
-  };
-
   try {
-    var response = UrlFetchApp.fetch(ANTHROPIC_API_URL, {
-      method:           "post",
-      contentType:      "application/json",
-      headers: {
-        "x-api-key":         apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      payload:           JSON.stringify(payload),
+    var res = UrlFetchApp.fetch(ANTHROPIC_API_URL, {
+      method: "post", contentType: "application/json",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      payload: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 150, messages: [{ role: "user", content: content }]}),
       muteHttpExceptions: true,
     });
-
-    if (response.getResponseCode() !== 200) return null;
-    var data = JSON.parse(response.getContentText());
-    return data.content[0].text.trim();
-  } catch(e) {
-    return null;
-  }
+    if (res.getResponseCode() !== 200) return null;
+    return JSON.parse(res.getContentText()).content[0].text.trim();
+  } catch(e) { return null; }
 }
 
 
@@ -462,23 +578,24 @@ function getApiKey() {
 function getApiKeyMasked() {
   var key = getApiKey();
   if (!key) return "";
-  return key.slice(0, 10) + "…" + key.slice(-4);
+  return key.slice(0, 10) + "\u2026" + key.slice(-4);
 }
 
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
-function newIssue(fields) {
+function newIssue(f) {
   return {
     id:             Utilities.getUuid(),
-    checkType:      fields.checkType      || "",
-    slideIndex:     fields.slideIndex     !== undefined ? fields.slideIndex : -1,
-    elementId:      fields.elementId      || "",
-    severity:       fields.severity       || "warning",
-    title:          fields.title          || "",
-    description:    fields.description    || "",
-    suggestedValue: fields.suggestedValue || "",
-    autoFixable:    !!fields.autoFixable,
+    checkType:      f.checkType      || "",
+    slideIndex:     f.slideIndex     !== undefined ? f.slideIndex : -1,
+    elementId:      f.elementId      || "",
+    severity:       f.severity       || "warning",
+    title:          f.title          || "",
+    description:    f.description    || "",
+    suggestedValue: f.suggestedValue || "",
+    autoFixable:    !!f.autoFixable,
+    manual:         !!f.manual,
     status:         "pending",
   };
 }
@@ -486,14 +603,9 @@ function newIssue(fields) {
 function getTitleShape(slide) {
   var els = slide.getPageElements();
   for (var i = 0; i < els.length; i++) {
-    var el = els[i];
-    if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) continue;
-    var shape = el.asShape();
-    var ph    = shape.getPlaceholderType();
-    if (ph === SlidesApp.PlaceholderType.TITLE ||
-        ph === SlidesApp.PlaceholderType.CENTERED_TITLE) {
-      return shape;
-    }
+    if (els[i].getPageElementType() !== SlidesApp.PageElementType.SHAPE) continue;
+    var ph = els[i].asShape().getPlaceholderType();
+    if (ph === SlidesApp.PlaceholderType.TITLE || ph === SlidesApp.PlaceholderType.CENTERED_TITLE) return els[i].asShape();
   }
   return null;
 }
@@ -507,12 +619,10 @@ function getBodyText(slide) {
   var parts = [];
   slide.getPageElements().forEach(function(el) {
     if (el.getPageElementType() !== SlidesApp.PageElementType.SHAPE) return;
-    var shape = el.asShape();
-    var ph    = shape.getPlaceholderType();
-    if (ph === SlidesApp.PlaceholderType.TITLE ||
-        ph === SlidesApp.PlaceholderType.CENTERED_TITLE) return;
-    var txt = shape.getText().asString().trim();
-    if (txt) parts.push(txt);
+    var ph = el.asShape().getPlaceholderType();
+    if (ph === SlidesApp.PlaceholderType.TITLE || ph === SlidesApp.PlaceholderType.CENTERED_TITLE) return;
+    var t = el.asShape().getText().asString().trim();
+    if (t) parts.push(t);
   });
   return parts.join(" | ").slice(0, 800);
 }
@@ -527,12 +637,8 @@ function getElementById(slide, objectId) {
 }
 
 function isTooLight(r, g, b) {
-  function ch(c) {
-    c /= 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  }
-  var lum = 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
-  return lum > 0.55;
+  function ch(c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b) > 0.55;
 }
 
 function toHex(rgb) {
