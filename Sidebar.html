@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <base target="_top" />
+  <style>
+    :root {
+      --bg:       #111;
+      --surface:  #1a1a1a;
+      --border:   rgba(255,255,255,0.08);
+      --border-2: rgba(255,255,255,0.14);
+      --text:     #f0f0f0;
+      --muted:    #666;
+      --error:    #e05252;
+      --warn:     #c8902a;
+      --ok:       #3a9e6e;
+      --ok-bg:    rgba(58,158,110,0.1);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ─────────────────────────────────── */
+    .header {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .logo {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .ai-badge {
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+      background: var(--ok-bg);
+      color: var(--ok);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border-2);
+      background: transparent;
+      color: var(--muted);
+      transition: color .12s, border-color .12s;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { color: var(--text); border-color: rgba(255,255,255,.22); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn.primary {
+      background: var(--text);
+      border-color: var(--text);
+      color: #000;
+      font-weight: 500;
+    }
+    .btn.primary:hover:not(:disabled) { opacity: .85; }
+    .btn-row {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-row .btn { flex: 1; text-align: center; }
+
+    /* ── SUMMARY ────────────────────────────────── */
+    .summary {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .summary-item {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      border-right: 1px solid var(--border);
+    }
+    .summary-item:last-child { border-right: none; }
+    .summary-num {
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .summary-num.error  { color: var(--error); }
+    .summary-num.warn   { color: var(--warn); }
+    .summary-num.ok     { color: var(--ok); }
+    .summary-label {
+      font-size: 9px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-top: 2px;
+    }
+
+    /* ── TABS ───────────────────────────────────── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      margin-bottom: -1px;
+      transition: color .12s;
+    }
+    .tab.active { color: var(--text); border-bottom-color: rgba(255,255,255,.4); }
+
+    /* ── ISSUES LIST ────────────────────────────── */
+    .panel { flex: 1; overflow-y: auto; }
+    .issues-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .empty {
+      padding: 40px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .empty-icon { font-size: 24px; margin-bottom: 8px; }
+
+    /* ── ISSUE CARD ─────────────────────────────── */
+    .issue-card {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .issue-card.error   { border-left: 2px solid var(--error); }
+    .issue-card.warning { border-left: 2px solid var(--warn); }
+    .issue-card.done    { opacity: .45; }
+    .issue-card-head {
+      padding: 8px 10px 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .issue-slide-tag {
+      font-size: 9px;
+      font-family: ui-monospace, monospace;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .issue-title {
+      font-size: 11.5px;
+      font-weight: 500;
+      line-height: 1.3;
+      flex: 1;
+    }
+    .badge {
+      font-size: 9px;
+      font-weight: 500;
+      font-family: ui-monospace, monospace;
+      padding: 1px 5px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .badge-error   { background: rgba(224,82,82,.12);  color: var(--error); }
+    .badge-warning { background: rgba(200,144,42,.12); color: var(--warn); }
+    .badge-ok      { background: var(--ok-bg);         color: var(--ok); }
+    .badge-muted   { background: rgba(255,255,255,.06); color: var(--muted); }
+    .issue-desc {
+      padding: 3px 10px 6px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .issue-suggestion {
+      margin: 0 10px 6px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 5px 7px;
+      font-family: ui-monospace, monospace;
+      font-size: 10.5px;
+      color: var(--text);
+      word-break: break-word;
+      line-height: 1.4;
+    }
+    .issue-actions {
+      display: flex;
+      gap: 5px;
+      padding: 0 10px 8px;
+    }
+    .act-btn {
+      padding: 4px 9px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border-2);
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      transition: all .1s;
+    }
+    .act-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .act-btn.accept {
+      color: var(--ok);
+      border-color: rgba(58,158,110,.3);
+    }
+    .act-btn.accept:hover:not(:disabled) { background: var(--ok-bg); }
+    .act-btn.skip:hover:not(:disabled) { color: var(--text); }
+    .act-btn.review {
+      color: var(--warn);
+      border-color: rgba(200,144,42,.3);
+    }
+    .act-btn.review:hover:not(:disabled) { background: rgba(200,144,42,.08); }
+
+    /* ── SETTINGS ───────────────────────────────── */
+    .settings-panel {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .settings-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .settings-input {
+      width: 100%;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border-2);
+      border-radius: 5px;
+      padding: 7px 9px;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--text);
+      outline: none;
+    }
+    .settings-input:focus { border-color: rgba(255,255,255,.3); }
+    .settings-hint { font-size: 10.5px; color: var(--muted); line-height: 1.4; }
+    .settings-saved { font-size: 11px; color: var(--ok); }
+
+    /* ── LOADING ────────────────────────────────── */
+    .loading {
+      padding: 40px 16px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 1.5px solid rgba(255,255,255,.12);
+      border-top-color: var(--muted);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-row">
+      <span class="logo">Slides A11y</span>
+      <span id="ai-badge" class="ai-badge" style="display:none">AI</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" id="btn-scan" onclick="scan()">Scan</button>
+      <button class="btn" id="btn-remediate" onclick="remediateAll()" disabled>Remediate All</button>
+    </div>
+  </div>
+
+  <!-- SUMMARY (hidden until scan) -->
+  <div class="summary" id="summary" style="display:none">
+    <div class="summary-item">
+      <div class="summary-num error" id="sum-errors">0</div>
+      <div class="summary-label">Errors</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-num warn" id="sum-warnings">0</div>
+      <div class="summary-label">Warnings</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-num ok" id="sum-fixed">0</div>
+      <div class="summary-label">Fixed</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" id="tab-issues"   onclick="switchTab('issues')">Issues</div>
+    <div class="tab"        id="tab-settings" onclick="switchTab('settings')">Settings</div>
+  </div>
+
+  <!-- ISSUES PANEL -->
+  <div class="panel" id="panel-issues">
+    <div class="empty">
+      <div class="empty-icon">↑</div>
+      <div>Click Scan to check this presentation</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div class="panel" id="panel-settings" style="display:none">
+    <div class="settings-panel">
+      <div class="settings-label">Anthropic API Key</div>
+      <input
+        class="settings-input"
+        type="password"
+        id="api-key-input"
+        placeholder="sk-ant-…"
+      />
+      <div class="settings-hint">
+        Used to AI-generate alt text and slide titles. Stored in your Google account
+        via PropertiesService — never sent anywhere except Anthropic.
+      </div>
+      <button class="btn primary" onclick="saveKey()" style="width:100%">Save Key</button>
+      <div class="settings-saved" id="save-confirm" style="display:none">✓ Saved</div>
+    </div>
+  </div>
+
+  <script>
+    var issues   = [];
+    var fixedCount = 0;
+    var scanning   = false;
+
+    // ── INIT ─────────────────────────────────────────────────────────────────
+    window.onload = function() {
+      google.script.run
+        .withSuccessHandler(function(key) {
+          if (key) {
+            document.getElementById("api-key-input").value = key;
+            document.getElementById("ai-badge").style.display = "";
+          }
+        })
+        .getApiKeyMasked();
+    };
+
+    // ── TABS ─────────────────────────────────────────────────────────────────
+    function switchTab(tab) {
+      document.getElementById("panel-issues").style.display   = tab === "issues"   ? "" : "none";
+      document.getElementById("panel-settings").style.display = tab === "settings" ? "" : "none";
+      document.getElementById("tab-issues").classList.toggle("active",   tab === "issues");
+      document.getElementById("tab-settings").classList.toggle("active", tab === "settings");
+    }
+
+    // ── SCAN ─────────────────────────────────────────────────────────────────
+    function scan() {
+      if (scanning) return;
+      scanning = true;
+      document.getElementById("btn-scan").disabled = true;
+      document.getElementById("btn-remediate").disabled = true;
+      document.getElementById("panel-issues").innerHTML =
+        '<div class="loading"><div class="spinner"></div>Scanning…</div>';
+
+      google.script.run
+        .withSuccessHandler(onScanComplete)
+        .withFailureHandler(onError)
+        .scanPresentation();
+    }
+
+    function onScanComplete(result) {
+      scanning = false;
+      issues   = result.issues;
+      fixedCount = 0;
+      document.getElementById("btn-scan").disabled = false;
+
+      var autoFixable = issues.filter(function(i) { return i.autoFixable; }).length;
+      document.getElementById("btn-remediate").disabled = autoFixable === 0;
+
+      if (result.aiEnabled) {
+        document.getElementById("ai-badge").style.display = "";
+      }
+
+      updateSummary();
+      renderIssues();
+    }
+
+    // ── REMEDIATE ALL ─────────────────────────────────────────────────────────
+    function remediateAll() {
+      document.getElementById("btn-remediate").disabled = true;
+      document.getElementById("btn-scan").disabled = true;
+      document.getElementById("panel-issues").innerHTML =
+        '<div class="loading"><div class="spinner"></div>Applying fixes…</div>';
+
+      google.script.run
+        .withSuccessHandler(function(r) {
+          fixedCount += r.fixed;
+          // Re-scan to get fresh state
+          google.script.run
+            .withSuccessHandler(onScanComplete)
+            .withFailureHandler(onError)
+            .scanPresentation();
+        })
+        .withFailureHandler(onError)
+        .remediateAll();
+    }
+
+    // ── ACCEPT / SKIP ─────────────────────────────────────────────────────────
+    function accept(id) {
+      var issue = issues.find(function(i) { return i.id === id; });
+      if (!issue) return;
+      setCardBusy(id, true);
+
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r.ok) {
+            issue.status = "accepted";
+            fixedCount++;
+          } else {
+            issue.status = "pending";
+          }
+          updateSummary();
+          renderIssues();
+        })
+        .withFailureHandler(function(e) {
+          setCardBusy(id, false);
+          onError(e);
+        })
+        .applyFix(issue);
+    }
+
+    function skip(id) {
+      var issue = issues.find(function(i) { return i.id === id; });
+      if (!issue) return;
+      issue.status = "skipped";
+      updateSummary();
+      renderIssues();
+    }
+
+    function setCardBusy(id, busy) {
+      var card = document.getElementById("card-" + id);
+      if (!card) return;
+      card.querySelectorAll("button").forEach(function(b) { b.disabled = busy; });
+    }
+
+    // ── SETTINGS ─────────────────────────────────────────────────────────────
+    function saveKey() {
+      var key = document.getElementById("api-key-input").value.trim();
+      google.script.run
+        .withSuccessHandler(function() {
+          var conf = document.getElementById("save-confirm");
+          conf.style.display = "";
+          setTimeout(function() { conf.style.display = "none"; }, 2000);
+          if (key) document.getElementById("ai-badge").style.display = "";
+          else     document.getElementById("ai-badge").style.display = "none";
+        })
+        .saveApiKey(key);
+    }
+
+    // ── RENDER ────────────────────────────────────────────────────────────────
+    function updateSummary() {
+      var pending  = issues.filter(function(i) { return i.status === "pending"; });
+      var errors   = pending.filter(function(i) { return i.severity === "error"; }).length;
+      var warnings = pending.filter(function(i) { return i.severity === "warning"; }).length;
+      document.getElementById("sum-errors").textContent   = errors;
+      document.getElementById("sum-warnings").textContent = warnings;
+      document.getElementById("sum-fixed").textContent    = fixedCount;
+      document.getElementById("summary").style.display    = "";
+    }
+
+    function renderIssues() {
+      var panel   = document.getElementById("panel-issues");
+      var pending = issues.filter(function(i) { return i.status === "pending"; });
+      var done    = issues.filter(function(i) { return i.status !== "pending"; });
+
+      if (issues.length === 0) {
+        panel.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><div>No issues found</div></div>';
+        return;
+      }
+
+      var html = '<div class="issues-list">';
+
+      // Group pending by slide
+      var bySlide = {};
+      pending.forEach(function(iss) {
+        var key = iss.slideIndex >= 0 ? iss.slideIndex : -1;
+        if (!bySlide[key]) bySlide[key] = [];
+        bySlide[key].push(iss);
+      });
+
+      var keys = Object.keys(bySlide).sort(function(a, b) { return +a - +b; });
+      keys.forEach(function(key) {
+        bySlide[key].forEach(function(iss) { html += renderCard(iss); });
+      });
+
+      // Done items (collapsed/faded)
+      if (done.length) {
+        done.forEach(function(iss) { html += renderCard(iss); });
+      }
+
+      html += '</div>';
+      panel.innerHTML = html;
+    }
+
+    function renderCard(iss) {
+      var isDone  = iss.status !== "pending";
+      var badge   = isDone
+        ? '<span class="badge badge-ok">' + iss.status + '</span>'
+        : iss.severity === "error"
+          ? '<span class="badge badge-error">Error</span>'
+          : '<span class="badge badge-warning">Warn</span>';
+
+      var suggestion = iss.suggestedValue
+        ? '<div class="issue-suggestion">' + esc(iss.suggestedValue) + '</div>'
+        : '';
+
+      var actions = '';
+      if (!isDone) {
+        if (iss.autoFixable) {
+          actions = '<div class="issue-actions">' +
+            '<button class="act-btn accept" onclick="accept(\'' + iss.id + '\')">✓ Accept</button>' +
+            '<button class="act-btn skip"   onclick="skip(\'' + iss.id + '\')">Skip</button>' +
+            '</div>';
+        } else {
+          actions = '<div class="issue-actions">' +
+            '<button class="act-btn review" onclick="skip(\'' + iss.id + '\')">✓ Mark Reviewed</button>' +
+            '</div>';
+        }
+      }
+
+      var slideTag = iss.slideIndex >= 0
+        ? '<div class="issue-slide-tag">Slide ' + (iss.slideIndex + 1) + '</div>'
+        : '';
+
+      return '<div class="issue-card ' + iss.severity + (isDone ? ' done' : '') + '" id="card-' + iss.id + '">' +
+        '<div class="issue-card-head">' +
+          '<div style="flex:1">' + slideTag + '<div class="issue-title">' + esc(iss.title) + '</div></div>' +
+          badge +
+        '</div>' +
+        '<div class="issue-desc">' + esc(iss.description) + '</div>' +
+        suggestion +
+        actions +
+        '</div>';
+    }
+
+    function esc(s) {
+      return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function onError(e) {
+      scanning = false;
+      document.getElementById("btn-scan").disabled = false;
+      document.getElementById("panel-issues").innerHTML =
+        '<div class="empty" style="color:var(--error)">Error: ' + esc(String(e)) + '</div>';
+    }
+  </script>
+</body>
+</html>
